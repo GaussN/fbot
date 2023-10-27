@@ -1,0 +1,8 @@
+.git/
+.idea/
+venv/
+
+.gitignore
+README.md
+
+documents/

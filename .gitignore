@@ -1,6 +1,6 @@
 .idea/
 venv/
-env/
+env/*.env
 __pycache__/
 documents/
 TODO

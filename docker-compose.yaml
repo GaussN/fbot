@@ -26,9 +26,9 @@ services:
       - bot-network
     tty: true
 
-volumes:
-  postgres-volume:
-    external: true
+#volumes:
+#  postgres-volume:
+#    external: true
 
 networks:
   bot-network:

@@ -22,7 +22,7 @@ router = Router()
 
 
 @router.callback_query(F.data == 'cancel')
-async def cancle(callbak: CallbackQuery, state: FSMContext):
+async def cancel(callbak: CallbackQuery, state: FSMContext):
     await state.clear()
     await callbak.message.delete()
 
@@ -90,7 +90,7 @@ async def get_file(callback: CallbackQuery):
 
 
 @router.message(Command('del'))
-async def del_file(msg: Message, state: FSMContext):
+async def get_del_file_list(msg: Message, state: FSMContext):
     await msg.delete()
     with Session() as session:
         files: list[File] = session.query(File).filter(File.user_id == msg.from_user.id).all()
@@ -109,7 +109,7 @@ async def del_file(msg: Message, state: FSMContext):
 
 
 @router.callback_query(FileStates.select_files_for_del, F.data == 'delete')
-async def delete_files(callbak: CallbackQuery, state: FSMContext):
+async def del_files(callbak: CallbackQuery, state: FSMContext):
     # все файлы пользователя
     files: dict[str, tuple[bool, str]] = await state.get_data()
     # хэш файлов, помеченных на удаление

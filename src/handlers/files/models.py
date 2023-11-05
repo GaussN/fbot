@@ -2,8 +2,7 @@ from pathlib import Path
 from os import getenv
 from datetime import datetime
 
-from sqlalchemy import Column, Integer, String, DateTime,  UniqueConstraint, CheckConstraint
-from sqlalchemy import event
+from sqlalchemy import Column, Integer, String, DateTime,  UniqueConstraint
 
 from db import Base
 

@@ -1,3 +1,5 @@
+from typing import Iterable
+
 from emoji import emojize
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -27,7 +29,7 @@ def get_del_files_list_keyboard(files: dict[str, tuple[bool, str]]) -> InlineKey
     return del_markup.as_markup()
 
 
-def get_files_list_keyboard(files: list[File]) -> InlineKeyboardMarkup:
+def get_files_list_keyboard(files: Iterable[File]) -> InlineKeyboardMarkup:
     markup_builder = InlineKeyboardBuilder()
     for file in files:
         markup_builder.row(

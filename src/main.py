@@ -1,6 +1,12 @@
 import asyncio
+import sys
 
 from loguru import logger
+
+logger.remove(0)
+logger.add(sys.stdout, level=0)
+# logger.add('logs/debug.log', level='DEBUG', serialize=True, rotation='100 MB', compression='zip')
+# logger.add('logs/info.log', level='INFO', serialize=True, rotation='100 MB', compression='zip')
 
 from loader import bot, dp
 from handlers import router

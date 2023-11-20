@@ -20,15 +20,15 @@ services:
     container_name: bot-db
     env_file:
       - env/postgres.env
-#    volumes:
-#      - postgres-volume:/var/lib/postgresql/data
+    volumes:
+      - postgres-volume:/var/lib/postgresql/data
     networks:
       - bot-network
     tty: true
 
-#volumes:
-#  postgres-volume:
-#    external: true
+volumes:
+  postgres-volume:
+    external: true
 
 networks:
   bot-network:

@@ -1,6 +1,7 @@
 .idea/
 venv/
 env/*.env
+logs/
 __pycache__/
 documents/
 TODO

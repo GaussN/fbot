@@ -1,6 +1,7 @@
 .idea/
 venv/
 env/*.env
+env/load_env.sh
 logs/
 __pycache__/
 documents/

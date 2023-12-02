@@ -12,12 +12,13 @@ class File(Base):
 
     id = Column('id', Integer, primary_key=True, autoincrement=True)
     filename = Column('filename', String(50), nullable=False, index=True)
-    user_id = Column('userid', Integer, nullable=False)
+    user_tg_id = Column('user_tg_id', Integer, nullable=False)
     hash = Column('hash', String, index=True)
     ts = Column('ts', DateTime, default=datetime.utcnow)
+    key_hash = Column('key_hash', String, default='')
 
     DEFAULT_FOLDER = Path(getenv('PWD')) / 'documents'
 
     __table_args__ = (
-        UniqueConstraint('filename', 'hash', 'userid', name='file_hash_unique'),
+        UniqueConstraint('filename', 'hash', 'user_tg_id', name='file_hash_unique'),
     )

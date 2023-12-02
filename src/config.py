@@ -25,6 +25,8 @@ GOOGLE_PASSWORD = environ['GOOGLE_PASSWORD']
 
 logger.trace(f'{DB_CONNECT_STRING=}')
 logger.trace(f'{REDIS_HOST=}')
-logger.trace(f'{REDIS_PORT}')
+logger.trace(f'{REDIS_PORT=}')
 logger.trace(f'{BOT_TOKEN=}')
+logger.trace(f'{BOT_NAME=}')
 logger.trace(f'{GOOGLE_LOGIN=}')
+logger.trace(f'{GOOGLE_PASSWORD=}')

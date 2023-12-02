@@ -7,7 +7,7 @@ from aiogram import Router, F
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
 from aiogram.types.input_file import FSInputFile
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
 from aiogram.enums import ChatAction, ParseMode
 
 from loguru import logger
@@ -32,8 +32,9 @@ async def get_files_list(msg: Message):
     await msg.delete()
     await msg.bot.send_chat_action(msg.chat.id, ChatAction.FIND_LOCATION)
 
+    # TODO: проверка на авторизацию
     with Session() as db:
-        files_set: list[File] = db.query(File).filter(File.user_id == msg.from_user.id).all()
+        files_set: list[File] = db.query(File).filter(File.user_tg_id == msg.from_user.id).all()
 
     if not files_set:
         return await msg.answer(text='Кажется ты ещё не загружал файлы')
@@ -59,7 +60,7 @@ async def upload_file(msg: Message):
     with Session() as session:
         try:
             session.add(File(
-                user_id=user_id,
+                user_tg_id=user_id,
                 filename=filename,
                 hash=md5(file_io.read()).hexdigest()
             ))
@@ -76,24 +77,24 @@ async def get_file(callback: CallbackQuery):
         try:
             file: File = db.query(File).filter(
                 File.hash == callback.data[4:] and
-                File.user_id == callback.from_user.id
+                File.user_tg_id == callback.from_user.id
             ).one()
         except sqlalchemy.exc.MultipleResultsFound as ex:
             logger.critical(ex)
-            await callback.answer(text='Ой-ой! Произошла какая-то ошибка :o')
+            await callback.answer(text='Произошла какая-то ошибка :o')
             raise SystemExit('Ошибка в БД') from ex
         except sqlalchemy.exc.NoResultFound:
-            return await callback.answer(text='Ой ой кажется я не могу найти такой файл')
+            return await callback.answer(text='Kажется я не могу найти такой файл')
 
-    input_file = FSInputFile(File.DEFAULT_FOLDER / str(file.user_id) / file.filename, file.filename)
-    return await callback.bot.send_document(chat_id=file.user_id, document=input_file)
+    input_file = FSInputFile(File.DEFAULT_FOLDER / str(file.user_tg_id) / file.filename, file.filename)
+    return await callback.bot.send_document(chat_id=file.user_tg_id, document=input_file)
 
 
 @router.message(Command('del'))
 async def get_del_file_list(msg: Message, state: FSMContext):
     await msg.delete()
     with Session() as session:
-        files: list[File] = session.query(File).filter(File.user_id == msg.from_user.id).all()
+        files: list[File] = session.query(File).filter(File.user_tg_id == msg.from_user.id).all()
 
     if not files:
         return await msg.answer(text='У тебя ещё нет файлов :(')

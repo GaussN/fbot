@@ -1,8 +1,15 @@
 .idea/
+
 venv/
 env/*.env
 env/load_env.sh
-logs/
+
 __pycache__/
+
+logs/
 documents/
+
 TODO
+
+docker-compose.yaml
+Dockerfile

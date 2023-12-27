@@ -7,9 +7,10 @@ from aiogram import Router, F
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
 from aiogram.types.input_file import FSInputFile
-from aiogram.filters import Command, StateFilter
+from aiogram.filters import Command
 from aiogram.enums import ChatAction, ParseMode
 
+from sqlalchemy.orm import sessionmaker
 from loguru import logger
 
 from db import Session
@@ -28,12 +29,12 @@ async def cancel(callbak: CallbackQuery, state: FSMContext):
 
 
 @router.message(Command('files'))
-async def get_files_list(msg: Message):
+async def get_files_list(msg: Message, db_session: sessionmaker):
     await msg.delete()
     await msg.bot.send_chat_action(msg.chat.id, ChatAction.FIND_LOCATION)
 
     # TODO: проверка на авторизацию
-    with Session() as db:
+    with db_session() as db:
         files_set: list[File] = db.query(File).filter(File.user_tg_id == msg.from_user.id).all()
 
     if not files_set:
@@ -43,7 +44,7 @@ async def get_files_list(msg: Message):
 
 
 @router.message(F.document)
-async def upload_file(msg: Message):
+async def upload_file(msg: Message, db_session: sessionmaker):
     user_id = msg.from_user.id
     filename = msg.document.file_name
 
@@ -57,7 +58,7 @@ async def upload_file(msg: Message):
 
     await msg.bot.download(input_file, file_path / filename)
 
-    with Session() as session:
+    with db_session() as session:
         try:
             session.add(File(
                 user_tg_id=user_id,
@@ -72,8 +73,8 @@ async def upload_file(msg: Message):
 
 
 @router.callback_query(F.data.startswith('get:'))
-async def get_file(callback: CallbackQuery):
-    with Session() as db:
+async def get_file(callback: CallbackQuery, db_session: sessionmaker):
+    with db_session() as db:
         try:
             file: File = db.query(File).filter(
                 File.hash == callback.data[4:] and
@@ -91,9 +92,9 @@ async def get_file(callback: CallbackQuery):
 
 
 @router.message(Command('del'))
-async def get_del_file_list(msg: Message, state: FSMContext):
+async def get_del_file_list(msg: Message, state: FSMContext, db_session: sessionmaker):
     await msg.delete()
-    with Session() as session:
+    with db_session() as session:
         files: list[File] = session.query(File).filter(File.user_tg_id == msg.from_user.id).all()
 
     if not files:
@@ -110,14 +111,14 @@ async def get_del_file_list(msg: Message, state: FSMContext):
 
 
 @router.callback_query(FileStates.select_files_for_del, F.data == 'delete')
-async def del_files(callbak: CallbackQuery, state: FSMContext):
+async def del_files(callbak: CallbackQuery, state: FSMContext, db_session: sessionmaker):
     # все файлы пользователя
     files: dict[str, tuple[bool, str]] = await state.get_data()
     # хэш файлов, помеченных на удаление
     files_to_delete = [file for file in files if files[file][0]]
     await state.clear()
 
-    with Session() as session:
+    with db_session() as session:
         count_del_files = session.query(File).filter(File.hash.in_(files_to_delete)).delete()
         session.commit()
 
@@ -136,7 +137,6 @@ async def del_files(callbak: CallbackQuery, state: FSMContext):
 async def mark_file_for_del(callback: CallbackQuery, state: FSMContext):
     files: dict[str, list[bool, File]] = await state.get_data()
     files[callback.data] = not files[callback.data][0], files[callback.data][1]
-    # NOTE: update_data не работате :(
     await state.set_data(files)
     return await callback.message.edit_reply_markup(
         callback.inline_message_id, reply_markup=get_del_files_list_keyboard(files=files)

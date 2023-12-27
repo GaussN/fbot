@@ -1,22 +1,21 @@
 import re
 from hashlib import md5
+from smtplib import SMTPAuthenticationError
 
 from emoji import emojize
 
-import sqlalchemy.exc
+from sqlalchemy.exc import NoResultFound
+from sqlalchemy.orm import sessionmaker
 from loguru import logger
 
 from aiogram import Router
 from aiogram.fsm.context import FSMContext
-from aiogram.fsm.storage.redis import RedisStorage, StorageKey
+from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.filters import Command, StateFilter
 from aiogram.types import Message
 
-from db import Session as DbSession
-
 from .states import AuthStates
 from .utils import gen_verify_code, send_verify_code
-
 from .models import User, UserSession
 
 
@@ -36,8 +35,8 @@ async def cancel(msg: Message, state: FSMContext):
 
 
 @router.message(Command('auth'))
-async def start_auth(msg: Message, state: FSMContext):
-    with DbSession() as session:
+async def start_auth(msg: Message, state: FSMContext, db_session: sessionmaker):
+    with db_session() as session:
         if session.query(UserSession).filter(UserSession.tg_id == msg.from_user.id).first():
             return await msg.answer(
                 emojize('Для входа сначала надо выйти:wolf::point_up:', language='alias')
@@ -49,21 +48,27 @@ async def start_auth(msg: Message, state: FSMContext):
 
 
 @router.message(AuthStates.enter_email)
-async def get_email(msg: Message, state: FSMContext):
+async def get_email(msg: Message, state: FSMContext, db_session: sessionmaker):
     user_email = msg.text.strip()
     if not EMAIL_REGEX.fullmatch(user_email):
         return await msg.answer('Неверный адрес')
-    
-    with DbSession() as session:
+
+    with db_session() as session:
         if user := session.query(User).filter(User.email == user_email).first():
             await state.set_data({'user_id': user.id})
             await state.set_state(AuthStates.enter_password)
             return await msg.answer('Введи пароль')
 
     verify_code = gen_verify_code()
-    # TODO: проверка отправки письма
     await msg.answer('Я отправлю тебе на почту код. Пришли мне его')
-    logger.debug(send_verify_code(user_email, verify_code))
+    try:
+        some = send_verify_code(user_email, verify_code)
+        logger.debug(f'{some=}')
+    # FIXME: transfer the logic of handle exceptions in module that send message
+    except SMTPAuthenticationError as e:
+        logger.critical('Bot can\'t to auth gmail')
+        logger.exception("Error with email")
+        return await msg.answer('Произошла ошибка с отправкой кода. Гена уже работает над этим:D')
     logger.trace(f'{verify_code=}')
 
     await state.set_data({'email': user_email, 'code': verify_code, 'attemps': ATTEMPS_NUMBER})
@@ -96,7 +101,7 @@ async def get_code(msg: Message, state: FSMContext):
 
 
 @router.message(AuthStates.enter_new_password)
-async def get_new_password(msg: Message, state: FSMContext):
+async def get_new_password(msg: Message, state: FSMContext, db_session: sessionmaker):
     user_password = msg.text.strip()
     await msg.delete()
     if not PASSWORD_REGEX.fullmatch(user_password):
@@ -112,7 +117,7 @@ async def get_new_password(msg: Message, state: FSMContext):
             user=new_user,
             tg_id=msg.from_user.id
         )
-        with DbSession() as session:
+        with db_session() as session:
             session.add(new_user)
             session.add(new_session)
             session.commit()
@@ -121,22 +126,22 @@ async def get_new_password(msg: Message, state: FSMContext):
         logger.error(ex.__traceback__.tb_next)
     await state.clear()
     await msg.answer(emojize('Произошла регистрация:tada:', language='alias'))
-    await me(msg, state)
+    await me(msg, db_session)
 
 
 @router.message(AuthStates.enter_password)
-async def get_password(msg: Message, state: FSMContext):
+async def get_password(msg: Message, state: FSMContext, db_session: sessionmaker):
     password = msg.text.strip()
     await msg.delete()
     password_hash = md5(password.encode()).hexdigest()
 
     data = await state.get_data()
-    with DbSession() as session:
+    with db_session() as session:
         user: User = session.query(User).get(data['user_id'])
     if password_hash != user.password_hash:
         return msg.answer(emojize('Неверный пароль:red_circle:', language='alias'))
 
-    with DbSession() as session:
+    with db_session() as session:
         new_user_session = UserSession(user=user, tg_id=msg.from_user.id)
         session.add(new_user_session)
         session.commit()
@@ -146,8 +151,8 @@ async def get_password(msg: Message, state: FSMContext):
 
 
 @router.message(Command('me'))
-async def me(msg: Message, state: FSMContext):
-    with DbSession() as session:
+async def me(msg: Message, db_session: sessionmaker):
+    with db_session() as session:
         user_session: UserSession = session.query(UserSession).filter(UserSession.tg_id == msg.from_user.id).first()
         if user_session:
             user_sessions = '\n'.join([str(s.tg_id) for s in user_session.user.sessions])
@@ -166,13 +171,13 @@ Cессий({user_session.user.sessions.__len__()}):
 
 
 @router.message(Command('exit'))
-async def exit_(msg: Message, state: FSMContext):
-    with DbSession() as session:
+async def exit_(msg: Message, state: FSMContext, db_session: sessionmaker):
+    with db_session() as session:
         try:
             user_session = session.query(UserSession).filter(UserSession.tg_id == msg.from_user.id).one()
             session.delete(user_session)
             session.commit()
-        except sqlalchemy.exc.NoResultFound:
+        except NoResultFound:
             return await msg.answer(emojize('Для выхода надо сначала войти:wolf::point_up:', language='alias'))
     await msg.answer(emojize('Произошол выход:exploding_head:', language='alias'))
     await state.clear()

@@ -11,9 +11,8 @@ from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.enums.parse_mode import ParseMode
 
+from sqlalchemy.orm import sessionmaker
 from loguru import logger
-
-from db import Session as DBSession
 
 from handlers.files.models import File
 
@@ -39,10 +38,10 @@ async def cancel(msg: Message, state: FSMContext):
 
 
 @router.message(Command('create_link'))
-async def start_create_link(msg: Message, state: FSMContext):
+async def start_create_link(msg: Message, state: FSMContext, db_session: sessionmaker):
     await state.clear()
     await state.set_state(S.set_file)
-    with DBSession() as session:  # TODO: reg us
+    with db_session() as session:  # TODO: reg us
         files = session.query(File).filter(File.user_tg_id == msg.from_user.id)
     await msg.answer('Выберите файл:', reply_markup=get_files_list_keyboard(files))
 
@@ -112,7 +111,7 @@ async def set_counter(msg: Message, state: FSMContext):
     await create_link(msg.bot, msg.from_user.id, state)
 
 
-async def create_link(bot: Bot, user_id: int, state: FSMContext):
+async def create_link(bot: Bot, user_id: int, state: FSMContext, db_session: sessionmaker):
     data = await state.get_data()
     await state.clear()
     # await state.set_state(None)
@@ -130,7 +129,7 @@ async def create_link(bot: Bot, user_id: int, state: FSMContext):
     link.urn = uuid4().hex
     link.user_tg_id = user_id
 
-    with DBSession() as session:
+    with db_session() as session:
         # session.expire_on_commit = False
 
         file = session.query(File).filter(File.hash == data['file_hash']).first()
@@ -148,13 +147,13 @@ async def create_link(bot: Bot, user_id: int, state: FSMContext):
 
 
 @router.message(Command('get'))
-async def get_file(msg: Message):
+async def get_file(msg: Message, db_session: sessionmaker):
     try:
         urn = msg.text.split(' ')[1]
     except IndexError:
         return msg.answer('надо указать urn ссылки /get <urn>')
 
-    with DBSession() as session:
+    with db_session() as session:
         link = session.query(Link).filter(Link.urn == urn).first()
         if not link:
             return await msg.answer('Такого файла не существует')

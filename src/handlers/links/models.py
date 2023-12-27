@@ -16,7 +16,7 @@ class Link(Base):
     live_until = Column('live_until', DateTime, nullable=True, default=None)
     number_uses = Column('number_uses', Integer, nullable=True, default=None)
     ts = Column('ts', DateTime, default=datetime.utcnow)
-    file = relationship('File', backref='links')
+    file = relationship('File', backref='links', cascade='all,delete')
 
     def check(self) -> bool:
         return all((

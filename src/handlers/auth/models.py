@@ -12,7 +12,7 @@ class User(Base):
     email = Column('email', String)
     password_hash = Column('password_hash', String)
 
-    sessions = relationship('UserSession', back_populates='user')
+    sessions = relationship('UserSession', back_populates='user', cascade='all,delete')
 
     __table_args__ = (
         UniqueConstraint('tg_id', 'email', name='tgid_email_unique'),

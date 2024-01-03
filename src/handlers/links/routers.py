@@ -1,7 +1,7 @@
 """
-🤔 - обозначает, что я считаю себя умственно ограниченным
 Deus salvare animas nostras
 """
+import logging
 from datetime import datetime, timedelta
 from uuid import uuid4
 
@@ -12,7 +12,6 @@ from aiogram.fsm.context import FSMContext
 from aiogram.enums.parse_mode import ParseMode
 
 from sqlalchemy.orm import sessionmaker
-from loguru import logger
 
 from handlers.files.models import File
 
@@ -28,17 +27,20 @@ DT_FORMAT = '%d.%m.%Y %H:%M'
 # timedelta regex
 TD_REGEX = r'^\d{1,3}:\d{1,2}$'
 
+logger = logging.getLogger('app.links')
+
 
 @router.message(StateFilter(S), Command('cancel'))
 @router.callback_query(StateFilter(S), F.data == 'cancel')
 async def cancel(msg: Message, state: FSMContext):
-    logger.trace(f'[{msg.from_user.id}] cancel {await state.get_state()}')
+    logger.debug('[%d] cancel %s', msg.from_user.id, await state.get_state())
     await state.clear()
     await msg.answer('Отмена')
 
 
 @router.message(Command('create_link'))
 async def start_create_link(msg: Message, state: FSMContext, db_session: sessionmaker):
+    logger.debug('[%d] start create link', msg.from_user.id)
     await state.clear()
     await state.set_state(S.set_file)
     with db_session() as session:  # TODO: reg us
@@ -48,6 +50,7 @@ async def start_create_link(msg: Message, state: FSMContext, db_session: session
 
 @router.callback_query(StateFilter(S.set_file), F.data.len() == 32)
 async def set_ttl_prompt(callback: CallbackQuery, state: FSMContext):
+    logger.debug('[%d] choose file %s', callback.from_user.id, callback.data)
     await callback.message.delete()
     await state.update_data(file_hash=callback.data)
     await state.set_state(S.set_ttl)
@@ -65,19 +68,21 @@ async def set_ttl_prompt(callback: CallbackQuery, state: FSMContext):
 
 
 @router.message(StateFilter(S.set_ttl, S.set_counter), Command('skip'))
-async def skip(msg: Message, state: FSMContext):
+async def skip(msg: Message, state: FSMContext, db_session: sessionmaker):
     # FIXME: kurda🤔
     cur_state = await state.get_state()
+    logger.debug('[%d] skip %s', msg.from_user.id, cur_state)
     match cur_state:
         case S.set_ttl:
             await state.set_state(S.set_counter)
             await set_counter_prompt(msg.bot, msg.from_user.id)
         case S.set_counter:
-            await create_link(msg.bot, msg.from_user.id, state)
+            await create_link(msg.bot, msg.from_user.id, state, db_session)
 
 
 @router.message(StateFilter(S.set_ttl), F.text.regexp(TD_REGEX))
 async def set_ttl_as_timedelta(msg: Message, state: FSMContext):
+    logger.debug('[%d] set ttl %s', msg.from_user.id, msg.text)
     await state.set_state(S.set_counter)
     await state.update_data(td=msg.text)
     await set_counter_prompt(msg.bot, msg.from_user.id)
@@ -85,16 +90,16 @@ async def set_ttl_as_timedelta(msg: Message, state: FSMContext):
 
 @router.message(StateFilter(S.set_ttl), F.text.regexp(DT_REGEX))
 async def set_ttl_as_datetime(msg: Message, state: FSMContext):
-    logger.trace(f'[{msg.from_user.id}] datetime')
+    logger.debug('[%d] set ttl %s', msg.from_user.id, msg.text)
     try:
-        # валидация🤔
+        # валидация🤔🤔🤔🤔
         ttl = datetime.strptime(msg.text, DT_FORMAT)
         if ttl <= datetime.utcnow():
+            # 🤔🤔🤔🤔🤔
             raise ValueError('Invalid datetime')
-        logger.trace(f'[{msg.from_user.id}] {ttl}')
     except ValueError as ve:
         await msg.answer('Неправильная дата')
-        logger.warning(f'[{msg.from_user.id}] {ve} {msg.text} ')
+        logger.debug('[%d] invalid ttl %s', msg.from_user.id, msg.text)
     else:
         await state.set_state(S.set_counter)
         await state.update_data(ttl=msg.text)
@@ -106,15 +111,15 @@ async def set_counter_prompt(bot: Bot, user_id: int):
 
 
 @router.message(StateFilter(S.set_counter), F.text.isdigit())
-async def set_counter(msg: Message, state: FSMContext):
+async def set_counter(msg: Message, state: FSMContext, db_session: sessionmaker):
+    logger.debug('[%d] set count %s', msg.from_user.id, msg.text)
     await state.update_data(number_uses=int(msg.text))
-    await create_link(msg.bot, msg.from_user.id, state)
+    await create_link(msg.bot, msg.from_user.id, state, db_session)
 
 
 async def create_link(bot: Bot, user_id: int, state: FSMContext, db_session: sessionmaker):
     data = await state.get_data()
     await state.clear()
-    # await state.set_state(None)
 
     link = Link()
 
@@ -130,14 +135,14 @@ async def create_link(bot: Bot, user_id: int, state: FSMContext, db_session: ses
     link.user_tg_id = user_id
 
     with db_session() as session:
-        # session.expire_on_commit = False
-
         file = session.query(File).filter(File.hash == data['file_hash']).first()
         link.file = file
 
         session.add(link)
         session.commit()
         session.refresh(link)
+
+        logger.info('[%d] create links for file %s', user_id, file.filename)
 
     await bot.send_message(
         user_id,
@@ -150,15 +155,19 @@ async def create_link(bot: Bot, user_id: int, state: FSMContext, db_session: ses
 async def get_file(msg: Message, db_session: sessionmaker):
     try:
         urn = msg.text.split(' ')[1]
+        logger.info('[%d] request file by link %s', msg.from_user.id, urn)
     except IndexError:
+        logger.debug('[%d] invalid input format', msg.from_user.id)
         return msg.answer('надо указать urn ссылки /get <urn>')
 
     with db_session() as session:
         link = session.query(Link).filter(Link.urn == urn).first()
         if not link:
+            logger.debug('[%d] link on file dont exist', msg.from_user.id)
             return await msg.answer('Такого файла не существует')
 
         if not link.check():
+            logger.info('%s isnt longer valid', link.urn)
             await msg.answer('Ссылка больше не действительна')
             session.delete(link)
             session.commit()
@@ -173,5 +182,8 @@ async def get_file(msg: Message, db_session: sessionmaker):
 
         session.commit()
         session.refresh(link)
+
+        logger.debug('link %s refresh(ttl: %s, uses: %d)', link.urn, link.live_until or '-', link.number_uses or -1)
+        logger.info('[%d] got file %s', msg.from_user.id, file.filename)
 
         return await _cor

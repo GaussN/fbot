@@ -94,7 +94,7 @@ class StdoutFormatter(logging.Formatter):
     _CS = {
         "TRACE": colorama.Fore.CYAN,
         "DEBUG": colorama.Fore.BLUE,
-        "INFO": colorama.Fore.WHITE,
+        "INFO": colorama.Fore.LIGHTWHITE_EX,
         "WARNING": colorama.Fore.YELLOW,
         "ERROR": colorama.Fore.RED,
         "CRITICAL": colorama.Back.RED,
